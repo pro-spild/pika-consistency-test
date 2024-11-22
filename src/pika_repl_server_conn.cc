@@ -176,16 +176,19 @@ bool PikaReplServerConn::TrySyncOffsetCheck(const std::shared_ptr<SyncMasterDB>&
   const InnerMessage::BinlogOffset& slave_boffset = try_sync_request.binlog_offset();
   std::string db_name = db->DBName();
   BinlogOffset boffset;
+  // 获取master partition 的 filenum 和 offset
   Status s = db->Logger()->GetProducerStatus(&(boffset.filenum), &(boffset.offset));
   if (!s.ok()) {
     try_sync_response->set_reply_code(InnerMessage::InnerResponse::TrySync::kError);
     LOG(WARNING) << "Handle TrySync, DB: " << db_name << " Get binlog offset error, TrySync failed";
     return false;
   }
+  // 设置响应消息的binlog_offset
   InnerMessage::BinlogOffset* master_db_boffset = try_sync_response->mutable_binlog_offset();
   master_db_boffset->set_filenum(boffset.filenum);
   master_db_boffset->set_offset(boffset.offset);
 
+  // slave offset is larger than master offset, warn and return
   if (boffset.filenum < slave_boffset.filenum() ||
       (boffset.filenum == slave_boffset.filenum() && boffset.offset < slave_boffset.offset())) {
     try_sync_response->set_reply_code(InnerMessage::InnerResponse::TrySync::kSyncPointLarger);
@@ -195,6 +198,7 @@ bool PikaReplServerConn::TrySyncOffsetCheck(const std::shared_ptr<SyncMasterDB>&
     return false;
   }
 
+  // 检查config文件是否存在，不存在则返回，需要全量同步
   std::string confile = NewFileName(db->Logger()->filename(), slave_boffset.filenum());
   if (!pstd::FileExists(confile)) {
     LOG(INFO) << "DB: " << db_name << " binlog has been purged, may need full sync";
@@ -202,6 +206,7 @@ bool PikaReplServerConn::TrySyncOffsetCheck(const std::shared_ptr<SyncMasterDB>&
     return false;
   }
 
+  // 检查slave offset是否是当前log的起始点
   PikaBinlogReader reader;
   reader.Seek(db->Logger(), slave_boffset.filenum(), slave_boffset.offset());
   BinlogOffset seeked_offset;
@@ -369,7 +374,7 @@ void PikaReplServerConn::HandleBinlogSyncRequest(void* arg) {
     conn->NotifyClose();
     return;
   }
-
+  // 唤醒睡眠的auxThread线程
   g_pika_server->SignalAuxiliary();
 }
 

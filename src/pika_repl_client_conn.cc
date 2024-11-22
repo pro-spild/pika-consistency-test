@@ -181,6 +181,7 @@ void PikaReplClientConn::HandleDBSyncResponse(void* arg) {
 
   slave_db->SetMasterSessionId(session_id);
 
+  //不知道为什么在这里停一下，然后又在auxThread中启动
   slave_db->StopRsync();
   slave_db->SetReplState(ReplState::kWaitDBSync);
   LOG(INFO) << "DB: " << db_name << " Need Wait To Sync";

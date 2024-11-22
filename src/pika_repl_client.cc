@@ -122,6 +122,7 @@ void PikaReplClient::ScheduleWriteDBTask(const std::shared_ptr<Cmd>& cmd_ptr, co
   const PikaCmdArgsType& argv = cmd_ptr->argv();
   std::string dispatch_key = argv.size() >= 2 ? argv[1] : argv[0];
   size_t index = GetHashIndexByKey(dispatch_key);
+  // LOG(INFO) << "ScheduleWriteDBTask, db_name: " << db_name << ", dispatch_key: " << dispatch_key << ", index: " << index;
   auto task_arg = new ReplClientWriteDBTaskArg(cmd_ptr);
 
   IncrAsyncWriteDBTaskCount(db_name, 1);

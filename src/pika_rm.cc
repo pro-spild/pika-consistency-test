@@ -700,10 +700,12 @@ Status PikaReplicaManager::UpdateSyncBinlogStatus(const RmNode& slave, const Log
     return Status::NotFound(slave.ToString() + " not found");
   }
   std::shared_ptr<SyncMasterDB> db = sync_master_dbs_[slave.NodeDBInfo()];
+  // 更新从节点同步状态
   Status s = db->ConsensusUpdateSlave(slave.Ip(), slave.Port(), offset_start, offset_end);
   if (!s.ok()) {
     return s;
   }
+  // 将binlog写入同步队列等待发送
   s = db->SyncBinlogToWq(slave.Ip(), slave.Port());
   if (!s.ok()) {
     return s;
@@ -991,6 +993,7 @@ Status PikaReplicaManager::RunSyncSlaveDBStateMachine() {
     } else if (s_db->State() == ReplState::kWaitReply) {
       continue;
     } else if (s_db->State() == ReplState::kWaitDBSync) {
+      // 启动partial sync
       Status s = s_db->ActivateRsync();
       if (!s.ok()) {
         LOG(WARNING) << "Slave DB: " << s_db->DBName() << " rsync failed! full synchronization will be retried later";
@@ -1000,6 +1003,7 @@ Status PikaReplicaManager::RunSyncSlaveDBStateMachine() {
       std::shared_ptr<DB> db =
           g_pika_server->GetDB(p_info.db_name_);
       if (db) {
+        // 全同步结束，更新本地的filenum和offset
         if (s_db->IsRsyncExited()) {
           db->TryUpdateMasterOffset();
         }

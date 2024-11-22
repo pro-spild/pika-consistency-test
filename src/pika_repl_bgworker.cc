@@ -62,6 +62,7 @@ void PikaReplBgWorker::HandleBGWorkerWriteBinlog(void* arg) {
   LogOffset pb_end;
   bool only_keepalive = false;
 
+  // 通过查找两个非keepalive的binlogsync来确定binlog的范围
   // find the first not keepalive binlogsync
   for (size_t i = 0; i < index->size(); ++i) {
     const InnerMessage::InnerResponse::BinlogSync& binlog_res = res->binlog_sync((*index)[i]);
@@ -139,6 +140,7 @@ void PikaReplBgWorker::HandleBGWorkerWriteBinlog(void* arg) {
       slave_db->SetReplState(ReplState::kTryConnect);
       return;
     }
+    // 起始位置加上包头，size减去包头
     const char* redis_parser_start = binlog_res.binlog().data() + BINLOG_ENCODE_LEN;
     int redis_parser_len = static_cast<int>(binlog_res.binlog().size()) - BINLOG_ENCODE_LEN;
     int processed_len = 0;
