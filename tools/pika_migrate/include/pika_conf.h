@@ -424,6 +424,13 @@ class PikaConf : public pstd::BaseConf {
   int max_conn_rbuf_size() { return max_conn_rbuf_size_.load(); }
   int consensus_level() { return consensus_level_.load(); }
   int replication_num() { return replication_num_.load(); }
+
+  std::string target_redis_host()                   { return target_redis_host_; }
+  int target_redis_port()                           { return target_redis_port_; }
+  std::string target_redis_pwd()                    { return target_redis_pwd_;  }
+  int sync_batch_num()                              { return sync_batch_num_;    }
+  int redis_sender_num()                            { return redis_sender_num_;  }
+  
   int rate_limiter_mode() {
     std::shared_lock l(rwlock_);
     return rate_limiter_mode_;
@@ -1066,6 +1073,13 @@ class PikaConf : public pstd::BaseConf {
   // diff commands between cached commands and config file commands
   std::map<std::string, std::string> diff_commands_;
   void TryPushDiffCommands(const std::string& command, const std::string& value);
+
+  // migrate configure items
+  std::string target_redis_host_;
+  int target_redis_port_;
+  std::string target_redis_pwd_;
+  int sync_batch_num_;
+  int redis_sender_num_;
 
   //
   // Critical configure items
