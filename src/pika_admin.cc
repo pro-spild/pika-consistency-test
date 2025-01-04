@@ -3387,8 +3387,12 @@ void HelloCmd::Do() {
   }
 
   std::string raw;
+  char version[32];
+  snprintf(version, sizeof(version), "%d.%d.%d", PIKA_MAJOR, PIKA_MINOR, PIKA_PATCH);
+
   std::vector<storage::FieldValue> fvs{
       {"server", "redis"},
+      {"version", version}
   };
   // just for redis resp2 protocol
   fvs.push_back({"proto", "2"});
