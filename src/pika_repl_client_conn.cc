@@ -154,6 +154,7 @@ void PikaReplClientConn::HandleMetaSyncResponse(void* arg) {
   LOG(INFO) << "Finish to handle meta sync response";
 }
 
+static bool alerady_full_sync = false;
 void PikaReplClientConn::HandleDBSyncResponse(void* arg) {
   std::unique_ptr<ReplClientTaskArg> task_arg(static_cast<ReplClientTaskArg*>(arg));
   std::shared_ptr<net::PbConn> conn = task_arg->conn;
@@ -178,12 +179,16 @@ void PikaReplClientConn::HandleDBSyncResponse(void* arg) {
     return;
   }
 
-  slave_db->SetMasterSessionId(session_id);
+  if (!alerady_full_sync) {
+    alerady_full_sync = true;
+  } else {
+    LOG(FATAL) << "DBSyncResponse should only be called once";
+  }
 
+  slave_db->SetMasterSessionId(session_id);
   slave_db->StopRsync();
   slave_db->SetReplState(ReplState::kWaitDBSync);
   LOG(INFO) << "DB: " << db_name << " Need Wait To Sync";
-
   //now full sync is starting, add an unfinished full sync count
   g_pika_conf->AddInternalUsedUnfinishedFullSync(slave_db->DBName());
 }
