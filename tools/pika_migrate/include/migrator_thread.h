@@ -46,6 +46,7 @@ class MigratorThread : public net::Thread {
   void MigrateHashesDB();
   void MigrateSetsDB();
   void MigrateZsetsDB();
+  void MigrateStreamsDB();
 
   virtual void *ThreadMain();
 

@@ -1630,6 +1630,7 @@ void PikaServer::RetransmitData(const std::string& path) {
   migrators.emplace_back(std::make_shared<MigratorThread>(storage_, &pika_senders, int(storage::DataType::kHashes), thread_num));
   migrators.emplace_back(std::make_shared<MigratorThread>(storage_, &pika_senders, int(storage::DataType::kSets), thread_num));
   migrators.emplace_back(std::make_shared<MigratorThread>(storage_, &pika_senders, int(storage::DataType::kZSets), thread_num));
+  migrators.emplace_back(std::make_shared<MigratorThread>(storage_, &pika_senders, int(storage::DataType::kStreams), thread_num));
 
   for (size_t i = 0; i < pika_senders.size(); i++) {
     pika_senders[i]->StartThread();
