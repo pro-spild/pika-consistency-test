@@ -29,6 +29,7 @@ class RedisSender : public net::Thread {
     std::lock_guard l(keys_mutex_);
     return commands_queue_.size();
   }
+  bool Authenticate();
 
  private:
   int id_;

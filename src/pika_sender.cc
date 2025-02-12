@@ -8,13 +8,17 @@
 #include <glog/logging.h>
 
 PikaSender::PikaSender(std::string ip, int64_t port, std::string password):
-  cli_(NULL),
   ip_(ip),
   port_(port),
   password_(password),
   should_exit_(false),
   elements_(0)
   {
+    cli_ = std::shared_ptr<net::NetCli>(net::NewRedisCli());
+    cli_->set_connect_timeout(1000);
+    cli_->set_send_timeout(10000);
+    cli_->set_recv_timeout(10000);
+    ConnectRedis();
   }
 
 PikaSender::~PikaSender() {
@@ -29,81 +33,70 @@ void PikaSender::Stop() {
   should_exit_.store(true);
   wsignal_.notify_all();
   rsignal_.notify_all();
-  LOG(INFO) << "PikaSender received stop signal";
 }
 
 void PikaSender::ConnectRedis() {
-  while (cli_ == NULL) {
-    // Connect to redis
-    cli_ = net::NewRedisCli();
-    cli_->set_connect_timeout(1000);
+
+  while (true) {
     pstd::Status s = cli_->Connect(ip_, port_);
     if (!s.ok()) {
-      delete cli_;
-      cli_ = NULL;
       LOG(WARNING) << "Can not connect to " << ip_ << ":" << port_ << ", status: " << s.ToString();
+      std::this_thread::sleep_for(std::chrono::seconds(1));
       continue;
     } else {
       // Connect success
-
-      // Authentication
-      if (!password_.empty()) {
-        net::RedisCmdArgsType argv, resp;
-        std::string cmd;
-
-        argv.push_back("AUTH");
-        argv.push_back(password_);
-        net::SerializeRedisCommand(argv, &cmd);
-        pstd::Status s = cli_->Send(&cmd);
-
-        if (s.ok()) {
-          s = cli_->Recv(&resp);
-          if (resp[0] == "OK") {
-          } else {
-            LOG(FATAL) << "Connect to redis(" << ip_ << ":" << port_ << ") Invalid password";
-            cli_->Close();
-            delete cli_;
-            cli_ = NULL;
-            should_exit_ = true;
-            return;
-          }
-        } else {
-          LOG(WARNING) << "send auth failed: " << s.ToString();
-          cli_->Close();
-          delete cli_;
-          cli_ = NULL;
-          continue;
-        }
-      } else {
-        // If forget to input password
-        net::RedisCmdArgsType argv, resp;
-        std::string cmd;
-
-        argv.push_back("PING");
-        net::SerializeRedisCommand(argv, &cmd);
-        pstd::Status s = cli_->Send(&cmd);
-
-        if (s.ok()) {
-          s = cli_->Recv(&resp);
-          if (s.ok()) {
-            if (resp[0] == "NOAUTH Authentication required.") {
-              LOG(FATAL) << "Ping redis(" << ip_ << ":" << port_ << ") NOAUTH Authentication required";
-              cli_->Close();
-              delete cli_;
-              cli_ = NULL;
-              should_exit_ = true;
-              return;
-            }
-          } else {
-            LOG(WARNING) << "Recv failed: " << s.ToString();
-            cli_->Close();
-            delete cli_;
-            cli_ = NULL;
-          }
-        }
+      if (!Authenticate()) {
+        cli_->Close();
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+        continue;
       }
+      break;
     }
   }
+}
+
+bool PikaSender::Authenticate() {
+  if (!password_.empty()) {
+    net::RedisCmdArgsType argv, resp;
+    std::string cmd;
+
+    argv.push_back("AUTH");
+    argv.push_back(password_);
+    net::SerializeRedisCommand(argv, &cmd);
+    pstd::Status s = cli_->Send(&cmd);
+
+    if (s.ok()) {
+      s = cli_->Recv(&resp);
+      if (resp[0] == "OK") {
+        return true;
+      } else {
+        LOG(ERROR) << "Connect to redis(" << ip_ << ":" << port_ << ") Invalid password";
+        return false;
+      }
+    } else {
+      LOG(WARNING) << "send auth failed: " << s.ToString();
+      return false;
+    }
+  } else {
+    net::RedisCmdArgsType argv, resp;
+    std::string cmd;
+
+    argv.push_back("PING");
+    net::SerializeRedisCommand(argv, &cmd);
+    pstd::Status s = cli_->Send(&cmd);
+
+    if (s.ok()) {
+      s = cli_->Recv(&resp);
+      if (s.ok() && resp[0] == "NOAUTH Authentication required.") {
+        LOG(ERROR) << "Ping redis(" << ip_ << ":" << port_ << ") NOAUTH Authentication required";
+        return false;
+      }
+    } else {
+      LOG(WARNING) << "Recv failed: " << s.ToString();
+      return false;
+    }
+  }
+  return true;
 }
 
 void PikaSender::LoadKey(const std::string &key) {
@@ -123,9 +116,7 @@ void PikaSender::SendCommand(std::string &command, const std::string &key) {
     elements_--;
     LoadKey(key);
     cli_->Close();
-    LOG(INFO) <<  s.ToString().data();
-    delete cli_;
-    cli_ = NULL;
+    LOG(WARNING) <<  s.ToString();
     ConnectRedis();
   }else{
     cli_->Recv(NULL);
@@ -158,15 +149,9 @@ void *PikaSender::ThreadMain() {
     }
     wsignal_.notify_one();
     SendCommand(key, key);
-
   }
 
-
-  if (cli_) {
-    cli_->Close();
-    delete cli_;
-    cli_ = NULL;
-  }
+  cli_->Close();
   LOG(INFO) << "PikaSender thread complete";
   return NULL;
 }

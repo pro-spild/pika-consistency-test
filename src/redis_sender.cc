@@ -11,7 +11,7 @@
 
 #include <glog/logging.h>
 
-static time_t kCheckDiff = 1;
+static time_t kCheckDiff = 5;
 
 RedisSender::RedisSender(int id, std::string ip, int64_t port, std::string password):
   id_(id),
@@ -24,82 +24,75 @@ RedisSender::RedisSender(int id, std::string ip, int64_t port, std::string passw
   elements_(0) {
 
   last_write_time_ = ::time(NULL);
+  cli_ = std::shared_ptr<net::NetCli>(net::NewRedisCli());
+  cli_->set_connect_timeout(1000);
+  cli_->set_recv_timeout(10000);
+  cli_->set_send_timeout(10000);
 }
 
 RedisSender::~RedisSender() {
-  LOG(INFO) << "RedisSender thread " << id_ << " exit!!!";
 }
 
 void RedisSender::ConnectRedis() {
-  while (cli_ == NULL) {
-    // Connect to redis
-    cli_ = std::shared_ptr<net::NetCli>(net::NewRedisCli());
-    cli_->set_connect_timeout(1000);
-    cli_->set_recv_timeout(10000);
-    cli_->set_send_timeout(10000);
+  while (true) {
     pstd::Status s = cli_->Connect(ip_, port_);
     if (!s.ok()) {
       LOG(WARNING) << "Can not connect to " << ip_ << ":" << port_ << ", status: " << s.ToString();
-      cli_ = NULL;
-      sleep(3);
       continue;
     } else {
       // Connect success
       LOG(INFO) << "RedisSender thread " << id_ << "Connect to redis(" << ip_ << ":" << port_ << ") success";
-      // Authentication
-      if (!password_.empty()) {
-        net::RedisCmdArgsType argv, resp;
-        std::string cmd;
-
-        argv.push_back("AUTH");
-        argv.push_back(password_);
-        net::SerializeRedisCommand(argv, &cmd);
-        pstd::Status s = cli_->Send(&cmd);
-
-        if (s.ok()) {
-          s = cli_->Recv(&resp);
-          if (resp[0] == "OK") {
-          } else {
-            LOG(FATAL) << "Connect to redis(" << ip_ << ":" << port_ << ") Invalid password";
-            cli_->Close();
-            cli_ = NULL;
-            should_exit_ = true;
-            return;
-          }
-        } else {
-          LOG(WARNING) << "send auth failed: " << s.ToString();
-          cli_->Close();
-          cli_ = NULL;
-          continue;
-        }
-      } else {
-        // If forget to input password
-        net::RedisCmdArgsType argv, resp;
-        std::string cmd;
-
-        argv.push_back("PING");
-        net::SerializeRedisCommand(argv, &cmd);
-        pstd::Status s = cli_->Send(&cmd);
-
-        if (s.ok()) {
-          s = cli_->Recv(&resp);
-          if (s.ok()) {
-            if (resp[0] == "NOAUTH Authentication required.") {
-              LOG(FATAL) << "Ping redis(" << ip_ << ":" << port_ << ") NOAUTH Authentication required";
-              cli_->Close();
-              cli_ = NULL;
-              should_exit_ = true;
-              return;
-            }
-          } else {
-            LOG(WARNING) << s.ToString();
-            cli_->Close();
-            cli_ = NULL;
-          }
-        }
+      if (!Authenticate()) {
+        cli_->Close();
+        continue;
       }
+      break;
     }
   }
+}
+
+bool RedisSender::Authenticate() {
+  if (!password_.empty()) {
+    net::RedisCmdArgsType argv, resp;
+    std::string cmd;
+
+    argv.push_back("AUTH");
+    argv.push_back(password_);
+    net::SerializeRedisCommand(argv, &cmd);
+    pstd::Status s = cli_->Send(&cmd);
+
+    if (s.ok()) {
+      s = cli_->Recv(&resp);
+      if (resp[0] == "OK") {
+        return true;
+      } else {
+        LOG(ERROR) << "Connect to redis(" << ip_ << ":" << port_ << ") Invalid password";
+        return false;
+      }
+    } else {
+      LOG(WARNING) << "send auth failed: " << s.ToString();
+      return false;
+    }
+  } else {
+    net::RedisCmdArgsType argv, resp;
+    std::string cmd;
+
+    argv.push_back("PING");
+    net::SerializeRedisCommand(argv, &cmd);
+    pstd::Status s = cli_->Send(&cmd);
+
+    if (s.ok()) {
+      s = cli_->Recv(&resp);
+      if (s.ok() && resp[0] == "NOAUTH Authentication required.") {
+        LOG(ERROR) << "Ping redis(" << ip_ << ":" << port_ << ") NOAUTH Authentication required";
+        return false;
+      }
+    } else {
+      LOG(WARNING) << s.ToString();
+      return false;
+    }
+  }
+  return true;
 }
 
 void RedisSender::Stop() {
@@ -122,11 +115,8 @@ void RedisSender::SendRedisCommand(const std::string &command) {
 int RedisSender::SendCommand(std::string &command) {
   time_t now = ::time(NULL);
   if (kCheckDiff < now - last_write_time_) {
-    int ret = cli_->CheckAliveness();
-    if (ret < 0) {
-      cli_ = NULL;
+      cli_->Close();
       ConnectRedis();
-    }
     last_write_time_ = now;
   }
 
@@ -140,10 +130,9 @@ int RedisSender::SendCommand(std::string &command) {
     }
 
     cli_->Close();
-    cli_ = NULL;
     ConnectRedis();
   } while(++idx < 3);
-  LOG(WARNING) << "RedisSender " << id_ << " fails to send redis command " << command << ", times: " << idx << ", error: " << "send command failed";
+  LOG(ERROR) << "RedisSender " << id_ << " fails to send redis command " << command << ", times: " << idx << ", error: " << "send command failed";
   return -1;
 }
 
@@ -182,7 +171,7 @@ void *RedisSender::ThreadMain() {
   }
 
   LOG(INFO) << "RedisSender thread " << id_ << " complete";
-  cli_ = NULL;
+  cli_->Close();
   return NULL;
 }
 

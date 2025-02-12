@@ -23,9 +23,9 @@ public:
   void SendCommand(std::string &command, const std::string &key);
   int QueueSize();
   void ConnectRedis();
-
+  bool Authenticate();
 private:
-  net::NetCli *cli_;
+  std::shared_ptr<net::NetCli> cli_;
   pstd::CondVar wsignal_;
   pstd::CondVar rsignal_;
   std::mutex signal_mutex;
