@@ -19,6 +19,7 @@
 
 namespace pstd::lock {
 
+// 锁映射条带
 struct LockMapStripe {
   explicit LockMapStripe(const std::shared_ptr<MutexFactory>& factory) {
     stripe_mutex = factory->AllocateMutex();
@@ -37,6 +38,7 @@ struct LockMapStripe {
   std::unordered_set<std::string> keys;
 };
 
+// 锁映射机制
 // Map of #num_stripes LockMapStripes
 struct LockMap {
   explicit LockMap(size_t num_stripes, const std::shared_ptr<MutexFactory>& factory) : num_stripes_(num_stripes) {
@@ -117,6 +119,7 @@ Status LockMgr::Acquire(const std::shared_ptr<LockMapStripe>& stripe, const std:
   return result;
 }
 
+// 在获取带管理条带锁中hash表的mutex之后，将当前key放到锁映射条带的hash表中，表明该key已经被锁住了
 // Try to lock this key after we have acquired the mutex.
 // REQUIRED:  Stripe mutex must be held.
 Status LockMgr::AcquireLocked(const std::shared_ptr<LockMapStripe>& stripe, const std::string& key) {

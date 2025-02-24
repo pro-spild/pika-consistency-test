@@ -282,6 +282,7 @@ Status RsyncClient::Stop() {
   return Status::OK();
 }
 
+// 比较远程和本地数据
 bool RsyncClient::ComparisonUpdate() {
   std::string local_snapshot_uuid;
   std::string remote_snapshot_uuid;

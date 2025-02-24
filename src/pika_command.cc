@@ -867,8 +867,9 @@ void Cmd::InternalProcessCommand(const HintKeys& hint_keys) {
   if (g_pika_conf->slowlog_slower_than() >= 0) {
     start_us = pstd::NowMicros();
   }
-
+  // 运行暂停命令，其他命令需要暂停
   if (!IsSuspend()) {
+    // 读写锁
     db_->DBLockShared();
   }
 
@@ -886,6 +887,7 @@ void Cmd::InternalProcessCommand(const HintKeys& hint_keys) {
   }
 }
 
+// 执行命令
 void Cmd::DoCommand(const HintKeys& hint_keys) {
   if (IsNeedCacheDo()
       && PIKA_CACHE_NONE != g_pika_conf->cache_mode()

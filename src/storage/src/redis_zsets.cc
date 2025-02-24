@@ -199,6 +199,7 @@ Status Redis::ZAdd(const Slice& key, const std::vector<ScoreMember>& score_membe
 
   BaseMetaKey base_meta_key(key);
   Status s = db_->Get(default_read_options_, handles_[kMetaCF], base_meta_key.Encode(), &meta_value);
+  // 检查当前key是否存在在redis中，如果存在，还要检查是否其类型是否为zset
   if (s.ok() && !ExpectedMetaValue(DataType::kZSets, meta_value)) {
     if (ExpectedStale(meta_value)) {
       s = Status::NotFound();

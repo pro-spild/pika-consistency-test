@@ -290,6 +290,7 @@ void PikaClientConn::ProcessRedisCmds(const std::vector<net::RedisCmdArgsType>& 
     bool is_admin_cmd = g_pika_conf->is_admin_cmd(opt);
 
     //we don't intercept pipeline batch (argvs.size() > 1)
+    // 只拦截 Get和HGet
     if (g_pika_conf->rtc_cache_read_enabled() &&
         argvs.size() == 1 && IsInterceptedByRTC(opt) &&
         PIKA_CACHE_NONE != g_pika_conf->cache_mode() &&
