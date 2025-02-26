@@ -258,12 +258,38 @@ void PikaClientConn::ProcessMonitor(const PikaCmdArgsType& argv) {
 }
 
 bool PikaClientConn::IsInterceptedByRTC(std::string& opt) {
-  // currently we only Intercept: Get, HGet
-  if (opt == kCmdNameGet && g_pika_conf->GetCacheString()) {
-    return true;
+  // only single key read command will be intercepted
+  
+  // kv command
+  // get  strlen exists ttl pttl type
+  if (opt == kCmdNameGet  || opt == kCmdNameStrlen || opt == kCmdNameExists ||
+      opt == kCmdNameTtl || opt == kCmdNamePttl || opt == kCmdNameType) {
+    return g_pika_conf->GetCacheString();
   }
-  if (opt == kCmdNameHGet && g_pika_conf->GetCacheHash()) {
-    return true;
+
+  // hash command
+  // hget hmget hexists hlen hstrlen 
+  if (opt == kCmdNameHGet || opt == kCmdNameHMget || opt == kCmdNameHExists 
+      || opt == kCmdNameHLen || opt == kCmdNameHStrlen) {
+    return g_pika_conf->GetCacheHash();
+  }
+
+  // list command
+  // llen
+  if (opt == kCmdNameLLen) {
+    return g_pika_conf->GetCacheList();
+  }
+
+  // set command
+  // scard sismember
+  if (opt == kCmdNameSCard || opt == KCmdNameSIsMember) {
+    return g_pika_conf->GetCacheSet();
+  }
+
+  // zset command
+  // zcard zsore
+  if (opt == kCmdNameZCard || opt == kCmdNameZScore) {
+    return g_pika_conf->GetCacheZset();
   }
   return false;
 }
@@ -349,7 +375,7 @@ bool PikaClientConn::ReadCmdInCache(const net::RedisCmdArgsType& argv, const std
   }
   // Initial
   c_ptr->Initial(argv, current_db_);
-  // dont store cmd with too large key(only Get/HGet cmd can reach here)
+  // dont store cmd with too large key
   // the cmd with large key should be non-exist in cache, except for pre-stored
   if (c_ptr->IsTooLargeKey(g_pika_conf->max_key_size_in_cache())) {
     resp_num--;
@@ -365,7 +391,7 @@ bool PikaClientConn::ReadCmdInCache(const net::RedisCmdArgsType& argv, const std
     // acl check failed
     return false;
   }
-  // only read command(Get, HGet) will reach here, no need of record lock
+  // only read command will reach here, no need of record lock
   bool read_status = c_ptr->DoReadCommandInCache();
   auto cmdstat_map = g_pika_cmd_table_manager->GetCommandStatMap();
   resp_num--;
